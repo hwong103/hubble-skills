@@ -58,8 +58,8 @@ shape:
    immediately after the comment’s `{#cN}` marker. For a fragmented anchor,
    place the single authoritative metadata block after the final fragment.
 7. Set `resolved: true` only when the user’s request has actually been
-   addressed. For acknowledgements, tests, questions, or partial work, keep
-   `resolved: false`.
+   addressed. For an explicit reopen request, set `resolved: false`. For
+   acknowledgements, tests, questions, or partial work, keep `resolved: false`.
 
 ## Preservation rules
 
