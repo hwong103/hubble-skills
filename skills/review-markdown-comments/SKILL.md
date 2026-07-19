@@ -1,13 +1,11 @@
 ---
 name: review-markdown-comments
-description: "Address Hubble review comments stored inline in Markdown CriticMarkup: locate a comment by id or exact anchor, append agent replies, preserve unknown metadata and unrelated Markdown, and resolve only after addressing the request. Use when an agent is asked to reply to, resolve, or reopen a Hubble review comment in a Markdown file."
+description: "Reply to, resolve, or reopen Hubble review comments stored as CriticMarkup in Markdown files. Use when asked to address a Hubble review comment."
 ---
 
 # Review Markdown Comments
 
-Use this skill when a Hubble user asks an agent to address a review comment in a
-Markdown file. Work directly on the file named by the user; do not require the
-Hubble UI, browser automation, Rough Draft, or a sidecar database.
+Work directly on the Markdown file named by the user.
 
 ## Comment format
 
@@ -26,9 +24,8 @@ Thread state may follow a comment anchor as an encoded HTML comment:
 <!-- hubble-review:%7B%22replies%22%3A%5B%5D%2C%22resolved%22%3Afalse%7D-->
 ```
 
-The decoded metadata is a JSON object. Hubble uses `replies` and `resolved`,
-but other top-level keys are allowed and must survive edits. A reply has this
-shape:
+The decoded metadata is a JSON object. Hubble uses `replies` and `resolved`;
+other top-level keys are allowed. A reply has this shape:
 
 ```json
 {
@@ -39,57 +36,50 @@ shape:
 }
 ```
 
+Review markers inside inline code or fenced code are literal text, not
+comments.
+
 ## Address a comment
 
-1. Read the complete file before editing it.
-2. Locate the requested compact id, such as `{#c7}`. If the user gives only
-   anchored text, locate the exact CriticMarkup anchor instead. Confirm the
-   anchored text and comment body match the user’s request. If the id or exact
-   anchor is absent or ambiguous, stop and report the ambiguity.
-3. Inspect the metadata immediately following that logical comment. If it is
-   absent, start with an empty metadata object and add a new encoded object
-   after the `{#cN}` marker. If it is present, decode it with URI decoding and
-   JSON parsing; if it is malformed, stop rather than overwrite it. Do not
-   hand-edit an encoded substring if a structured edit is practical.
-4. Preserve the existing metadata object and every existing reply object.
-5. Append a new reply with the next unused `rN` id, `author: "agent"`, the
-   response body, and the current UTC time as an ISO-8601 `createdAt` value.
-6. Re-encode the complete metadata object with URI encoding and write it back
-   immediately after the comment’s `{#cN}` marker. For a fragmented anchor,
-   place the single authoritative metadata block after the final fragment.
-7. Set `resolved: true` only when the user’s request has actually been
-   addressed. For an explicit reopen request, set `resolved: false`. For
-   acknowledgements, tests, questions, or partial work, keep `resolved: false`.
+1. Read the complete file. Locate the requested compact id, such as `{#c7}`;
+   if the user gives only anchored text, locate the exact CriticMarkup anchor
+   instead. Confirm the anchored text and comment body match the user's
+   request. If the id or exact anchor is absent or ambiguous, stop and report
+   the ambiguity.
+2. Decode the metadata immediately following that logical comment: URI
+   decoding, then JSON parsing. If it is absent, start from an empty object.
+   If it is malformed, stop rather than overwrite it.
+3. Round-trip the metadata: mutate only the reply list and `resolved`, then
+   re-encode the complete object — every other key and every existing reply
+   survives unchanged. Replies are append-only: add a reply with the next
+   unused `rN` id, `author: "agent"`, the response body, and the current UTC
+   time as an ISO-8601 `createdAt`.
+4. Set `resolved: true` only when the user's request has actually been
+   addressed. For an explicit reopen request, set `resolved: false`.
+   Acknowledgements, tests, questions, and partial work leave it `false`.
+5. Write the encoded block immediately after the comment's `{#cN}` marker
+   (see Fragmented anchors). Keep the anchored text byte-for-byte unchanged,
+   along with the comment body, CriticMarkup delimiters, suggested edits, and
+   all unrelated Markdown.
 
-## Preservation rules
+## Fragmented anchors
 
-- Keep the anchored text byte-for-byte unchanged.
-- Keep the comment body, compact anchor id, CriticMarkup delimiters, suggested
-  edits, links, images, front matter, and unrelated Markdown unchanged.
-- Never remove or rewrite unknown metadata keys.
-- Never replace existing replies; append only.
-- If one logical comment id appears in multiple CriticMarkup fragments, treat
-  the final fragment as authoritative. Preserve every marker and every metadata
-  field, but move the single existing metadata block after the final fragment
-  when it currently follows an earlier fragment; never create duplicate blocks.
-  Report the fragmented anchor if it may affect the user’s formatting.
-- Review markers inside inline code or fenced code are literal text and must
-  not be treated as comments.
+One logical comment id may appear in multiple CriticMarkup fragments. The
+final fragment is authoritative: keep every marker, keep a single metadata
+block, and place it after the final fragment — moving it there if it
+currently follows an earlier fragment. Report the fragmentation if it may
+affect the user's formatting.
 
 ## Validation
 
 After editing:
 
-1. Re-read the file.
-2. Confirm the requested id and exact anchored text are still present.
-3. Decode the metadata after the final fragment and verify the new reply is the
-   final reply, the old replies and unknown keys remain, and `resolved` has the
-   intended value.
-4. Check the surrounding Markdown for accidental changes. For a tracked file,
-   inspect `git diff -- <file>`; for an ignored/generated file, compare the
-   before and after text or inspect the exact changed line.
-5. Report the reply id and whether the comment remains unresolved.
-
-Use a concise acknowledgement when the comment is only a test, for example:
-“Received the test comment; the anchored text and surrounding Markdown are
-unchanged.”
+1. Re-read the file and confirm the requested id and exact anchored text are
+   still present.
+2. Decode the metadata after the final fragment and verify the new reply is
+   the final reply, the old replies and other keys round-tripped, and
+   `resolved` has the intended value.
+3. Check the surrounding Markdown for accidental changes: inspect
+   `git diff -- <file>` for a tracked file, or compare the before and after
+   text for an ignored/generated file.
+4. Report the reply you left and whether you resolved the comment.
